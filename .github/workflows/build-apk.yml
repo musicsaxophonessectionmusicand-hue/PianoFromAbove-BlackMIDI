@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build aPFA Kiva APK
 
 on:
   workflow_dispatch:
@@ -19,21 +19,23 @@ jobs:
 
       - uses: android-actions/setup-android@v3
 
-      - name: Install Android tools
+      - name: Install Android SDK NDK and CMake
         run: |
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
+          sdkmanager \
+            "platforms;android-34" \
+            "build-tools;34.0.0" \
+            "ndk;21.4.7075529" \
+            "cmake;3.22.1"
 
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
-
-
-      - name: Build APK
-        run: gradle assembleDebug
+      - name: Build REAL aPFA
+        working-directory: upstream-apfa/aPFA-120-source
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
 
       - uses: actions/upload-artifact@v4
         with:
-          name: KivaPFA-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: aPFA-Kiva-debug-apk
+          path: upstream-apfa/aPFA-120-source/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
