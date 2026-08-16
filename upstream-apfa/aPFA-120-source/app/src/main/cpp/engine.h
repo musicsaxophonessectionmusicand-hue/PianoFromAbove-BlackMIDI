@@ -9,6 +9,7 @@
 #pragma once
 
 #include <atomic>
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -165,7 +166,8 @@ private:
     size_t eventCursor_  = 0;
     size_t windowCursor_ = 0;
     size_t pcCursor_     = 0;
-    std::vector<int> active_;
+    std::array<std::vector<int>, 128> activeByKey_;
+    std::vector<int> seekActiveScratch_;
     int noteState_[128] = {0};
 
     // render scratch — built and consumed inline on the engine thread

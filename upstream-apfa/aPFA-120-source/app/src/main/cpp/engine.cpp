@@ -366,8 +366,12 @@ void Engine::threadMain() {
         streamer_.startLoader(&pubTimeUs_, clockUs_, loaderAvoid);
     }
 #endif
-    active_.clear();
-    active_.reserve(16384);
+    for (auto& v : activeByKey_) {
+        v.clear();
+        v.reserve(128);
+    }
+    seekActiveScratch_.clear();
+    seekActiveScratch_.reserve(16384);
     for (int& s : noteState_) s = -1;
     lastWall_ = fpsLastUs_ = nowUs();
     cpuLastUs_ = nowThreadCpuUs();
@@ -501,23 +505,26 @@ void Engine::dispatch() {
             synth_.sendRaw(static_cast<uint8_t>(e->eventCode), e->param1, e->param2);
         } else if (e->isNoteOn()) {
             synth_.noteOn(ch, key, e->param2);
-            active_.push_back(static_cast<int>(eventCursor_));
+            activeByKey_[key].push_back(static_cast<int>(eventCursor_));
             noteState_[key] = static_cast<int>(eventCursor_);
         } else {
             synth_.noteOff(ch, key);
-            noteState_[key] = -1;
             const PlayEvent* sister = e->sister;
-            size_t i = 0;
-            while (i < active_.size()) {
-                PlayEvent* a = ev[active_[i]];
-                if (a == sister) {
-                    active_[i] = active_.back();
-                    active_.pop_back();
-                } else {
-                    if (a->param1 == key) noteState_[key] = active_[i];
-                    i++;
+            auto& activeKey = activeByKey_[key];
+
+            // Kiva-style locality: a Note Off only searches active notes
+            // belonging to its own MIDI key instead of the global active set.
+            // Stable erase preserves chronological draw order for overlapping
+            // notes on the same key.
+            for (size_t i = activeKey.size(); i > 0; --i) {
+                if (ev[activeKey[i - 1]] == sister) {
+                    activeKey.erase(activeKey.begin() + (i - 1));
+                    break;
                 }
             }
+
+            noteState_[key] =
+                activeKey.empty() ? -1 : activeKey.back();
         }
         eventCursor_++;
     }
@@ -582,8 +589,10 @@ void Engine::buildVisible() {
     instances_.clear();
     memset(keyColor_, 0, sizeof(keyColor_));
 
-    for (int idx : active_)
-        instances_.push_back(toInstance(*ev[idx]));
+    for (const auto& activeKey : activeByKey_) {
+        for (int idx : activeKey)
+            instances_.push_back(toInstance(*ev[idx]));
+    }
     for (int k = 0; k < 128; k++)
         if (noteState_[k] >= 0)
             keyColor_[k] = colorOf(*ev[noteState_[k]]);
@@ -622,7 +631,9 @@ void Engine::applySeek(int64_t target) {
     eventCursor_  = lo;
     windowCursor_ = lo;
 
-    active_.clear();
+    for (auto& v : activeByKey_)
+        v.clear();
+    seekActiveScratch_.clear();
     for (int& s : noteState_) s = -1;
 #ifdef APFA_STREAMING
     if (streamer_.isOpen()) {
@@ -635,22 +646,25 @@ void Engine::applySeek(int64_t target) {
         for (size_t j = 0; j < eventCursor_; j++) {
             uint32_t s = streamer_.sisterPosAt(j);
             if (s < Streamer::kSisNoteOff && static_cast<size_t>(s) >= eventCursor_)
-                active_.push_back(static_cast<int>(j));
+                seekActiveScratch_.push_back(static_cast<int>(j));
         }
         // Warm what the next frame reads (visible band, the active notes and
         // their offs) before the param1 dereferences below.
         streamer_.warmSeek(target,
                            target + static_cast<int64_t>(3000000.0 * noteSpeed_),
-                           active_);
-        for (int j : active_)
-            noteState_[ev[j]->param1] = j;
+                           seekActiveScratch_);
+        for (int j : seekActiveScratch_) {
+            int key = ev[j]->param1;
+            activeByKey_[key].push_back(j);
+            noteState_[key] = j;
+        }
     } else
 #endif
     for (size_t j = 0; j < eventCursor_; j++) {
         const PlayEvent* e = ev[j];
         if (e->isNoteOn() && e->sister &&
             static_cast<int64_t>(e->sister->absMicroSec) > target) {
-            active_.push_back(static_cast<int>(j));
+            activeByKey_[e->param1].push_back(static_cast<int>(j));
             noteState_[e->param1] = static_cast<int>(j);
         }
     }
@@ -662,7 +676,12 @@ void Engine::applySeek(int64_t target) {
     playSkippedEvents(oldPcCursor);
     
     pubTimeUs_.store(static_cast<int64_t>(clockUs_));
-    LOGI("seek -> %.1f s, %zu active", target * 1e-6, active_.size());
+
+    size_t activeCount = 0;
+    for (const auto& v : activeByKey_)
+        activeCount += v.size();
+
+    LOGI("seek -> %.1f s, %zu active", target * 1e-6, activeCount);
 }
 
 void Engine::advancePcCursor() {
