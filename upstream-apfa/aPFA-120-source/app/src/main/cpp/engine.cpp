@@ -511,7 +511,8 @@ void Engine::dispatch() {
             while (i < active_.size()) {
                 PlayEvent* a = ev[active_[i]];
                 if (a == sister) {
-                    active_.erase(active_.begin() + static_cast<long>(i));
+                    active_[i] = active_.back();
+                    active_.pop_back();
                 } else {
                     if (a->param1 == key) noteState_[key] = active_[i];
                     i++;
