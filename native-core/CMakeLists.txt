@@ -1,0 +1,21 @@
+cmake_minimum_required(VERSION 3.20)
+project(kivapfa_core LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+add_library(kivapfa_core
+    src/MidiParser.cpp
+    src/PagedNoteStore.cpp
+    src/PlaybackCursor.cpp)
+target_include_directories(kivapfa_core PUBLIC include)
+if (NOT ANDROID)
+  add_executable(kivapfa_core_test tests/core_test.cpp)
+  target_link_libraries(kivapfa_core_test PRIVATE kivapfa_core)
+endif()
+if (NOT ANDROID)
+  add_executable(kivapfa_benchmark tests/benchmark.cpp)
+  target_link_libraries(kivapfa_benchmark PRIVATE kivapfa_core)
+endif()
+if (NOT ANDROID)
+  add_executable(kivapfa_density_benchmark tests/density_benchmark.cpp)
+  target_link_libraries(kivapfa_density_benchmark PRIVATE kivapfa_core)
+endif()
