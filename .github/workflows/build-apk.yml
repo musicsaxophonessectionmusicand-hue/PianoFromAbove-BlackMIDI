@@ -28,14 +28,12 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Unpack KivaPFA
-        run: unzip -q KivaPFA-Android-source.zip
 
       - name: Build APK
-        run: gradle -p KivaPFA-Android assembleDebug
+        run: gradle assembleDebug
 
       - uses: actions/upload-artifact@v4
         with:
           name: KivaPFA-debug-apk
-          path: KivaPFA-Android/app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
